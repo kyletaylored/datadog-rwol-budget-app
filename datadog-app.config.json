@@ -1,0 +1,6 @@
+{
+  "$schema": "https://unpkg.com/@datadog/create-apps/dist/datadog-app.config.schema.json",
+  "datadogSite": "datadoghq.com",
+  "id": "2d1f3dba6ff53b00f44c45c009c50a9a",
+  "name": "datadog-rum-without-limits-migrator"
+}
