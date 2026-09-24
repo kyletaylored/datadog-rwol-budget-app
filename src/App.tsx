@@ -74,6 +74,42 @@ function sampleRateLevel(sampleRate: number): 'default' | 'warning' | 'danger' {
     return 'danger';
 }
 
+// How big a slice `part` is of `total` — used to flag cost/session tiles that
+// dominate the budget, so the eye lands on the biggest lever first.
+function shareLevel(part: number, total: number): 'default' | 'warning' | 'danger' {
+    if (total <= 0) return 'default';
+    const share = part / total;
+    if (share > 0.5) return 'danger';
+    if (share > 0.25) return 'warning';
+    return 'default';
+}
+
+// Compares the modeled scenario's retention rate against what the app is
+// actually retaining today: retaining no more than today is a clean win,
+// retaining meaningfully more is a real cost signal worth flagging.
+function retentionComparisonLevel(newRatePct: number, currentRatePct: number | undefined): 'default' | 'success' | 'warning' | 'danger' {
+    if (currentRatePct === undefined) return 'default';
+    if (newRatePct <= currentRatePct) return 'success';
+    if (newRatePct <= currentRatePct * 1.5) return 'warning';
+    return 'danger';
+}
+
+type StatLevel = 'default' | 'success' | 'warning' | 'danger';
+
+// CalloutValue's own `level`/`hasStatusBorder` only tint the number's text or
+// draw a thin border — too subtle to read as a signal in a dense grid of
+// cards. Fill the whole card instead with a real [light, dark] background.
+const LEVEL_FILL: Record<'success' | 'warning' | 'danger', { backgroundColor: [string, string]; textColor: [string, string] }> = {
+    success: { backgroundColor: ['#d9f3e0', '#133a1d'], textColor: ['#1e6b34', '#6fcf88'] },
+    warning: { backgroundColor: ['#ffe6a2', '#664811'], textColor: ['#8a5a06', '#ffcf70'] },
+    danger: { backgroundColor: ['#fbd6db', '#5e151e'], textColor: ['#b3283c', '#ff8a97'] },
+};
+
+function levelFillProps(level: StatLevel): { backgroundColor?: [string, string]; textColor?: [string, string] } {
+    if (level === 'default') return {};
+    return LEVEL_FILL[level];
+}
+
 function InfoHint({ text }: { text: string }) {
     const [isOpen, setIsOpen] = useState(false);
     return (
@@ -222,6 +258,8 @@ function App() {
     );
 
     const ingestedSessions = usageQuery.data?.ingestedSessions ?? 0;
+    const currentRetentionRatePct =
+        ingestedSessions > 0 && usageQuery.data ? (usageQuery.data.indexedSessions / ingestedSessions) * 100 : undefined;
 
     const retention = useMemo(() => estimateRetention(candidateFilters, ingestedSessions), [candidateFilters, ingestedSessions]);
 
@@ -541,11 +579,7 @@ function App() {
                                 />
                                 <CalloutValue
                                     label="Current retention rate"
-                                    value={
-                                        usageQuery.isLoading || ingestedSessions === 0
-                                            ? '…'
-                                            : `${((usageQuery.data!.indexedSessions / ingestedSessions) * 100).toFixed(1)}%`
-                                    }
+                                    value={usageQuery.isLoading || currentRetentionRatePct === undefined ? '…' : `${currentRetentionRatePct.toFixed(1)}%`}
                                     isLoading={usageQuery.isLoading}
                                 />
                             </Grid>
@@ -673,15 +707,29 @@ function App() {
                                 <CalloutValue
                                     label="Projected RWoL cost (this scenario)"
                                     value={formatMoney(cost.totalRwolCost)}
-                                    level={cost.totalRwolCost > cost.legacyCost ? 'danger' : 'success'}
+                                    {...levelFillProps(cost.totalRwolCost > cost.legacyCost ? 'danger' : 'success')}
                                 />
-                                <CalloutValue label="Estimated retention rate" value={`${retention.retentionRatePct.toFixed(1)}%`} />
+                                <CalloutValue
+                                    label="Estimated retention rate"
+                                    value={`${retention.retentionRatePct.toFixed(1)}%`}
+                                    {...levelFillProps(retentionComparisonLevel(retention.retentionRatePct, currentRetentionRatePct))}
+                                />
                             </Grid>
 
                             <Grid columns={3} gap="md" marginTop="md" isFullWidth>
                                 <CalloutValue size="sm" label="Measure cost" value={formatMoney(cost.measureCost)} />
-                                <CalloutValue size="sm" label="Investigate cost" value={formatMoney(cost.investigateCost)} />
-                                <CalloutValue size="sm" label="Replay cost" value={formatMoney(cost.replayCost)} />
+                                <CalloutValue
+                                    size="sm"
+                                    label="Investigate cost"
+                                    value={formatMoney(cost.investigateCost)}
+                                    {...levelFillProps(shareLevel(cost.investigateCost, cost.totalRwolCost))}
+                                />
+                                <CalloutValue
+                                    size="sm"
+                                    label="Replay cost"
+                                    value={formatMoney(cost.replayCost)}
+                                    {...levelFillProps(shareLevel(cost.replayCost, cost.totalRwolCost))}
+                                />
                             </Grid>
 
                             <Spacing as="div" marginTop="md">
@@ -695,12 +743,12 @@ function App() {
                                     <CalloutValue
                                         label={`Affordable retention rate to match ${formatMoney(cost.legacyCost)}/mo`}
                                         value={`${reverseBudget.affordableRetentionRatePct.toFixed(1)}%`}
-                                        level="success"
+                                        {...levelFillProps('success')}
                                     />
                                     <CalloutValue
                                         label="Affordable retained sessions/mo"
                                         value={formatSessions(reverseBudget.affordableRetainedSessions)}
-                                        level="success"
+                                        {...levelFillProps('success')}
                                     />
                                 </Grid>
                             </Spacing>
