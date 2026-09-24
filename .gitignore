@@ -21,6 +21,11 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+_reference/
+
+# AI assistant tooling (regenerable local skill caches, not app source)
+.agents/
+.claude/
 
 # Environment variables
 .env
