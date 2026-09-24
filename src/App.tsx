@@ -2,11 +2,13 @@ import { useQuery } from '@tanstack/react-query';
 import { Button } from '@datadog/druids/form/Button';
 import { InputNumber } from '@datadog/druids/form/InputNumber';
 import { Select } from '@datadog/druids/form/Select';
+import { ToggleSwitch } from '@datadog/druids/form/ToggleSwitch';
 import { ApiIcon } from '@datadog/druids/icons/Api';
 import { CheckIcon } from '@datadog/druids/icons/Check';
 import { ClickIcon } from '@datadog/druids/icons/Click';
 import { ErrorTrackingIcon } from '@datadog/druids/icons/ErrorTracking';
 import { EyeIcon } from '@datadog/druids/icons/Eye';
+import { InfoIcon } from '@datadog/druids/icons/Info';
 import { PencilIcon } from '@datadog/druids/icons/Pencil';
 import { SessionReplayIcon } from '@datadog/druids/icons/SessionReplay';
 import { Grid } from '@datadog/druids/layout/Grid';
@@ -18,6 +20,7 @@ import { MessageBox } from '@datadog/druids/misc/MessageBox';
 import { Badge } from '@datadog/druids/pills/Badge';
 import { StatusPill } from '@datadog/druids/pills/StatusPill';
 import { Table, type TableColumn } from '@datadog/druids/table/Table';
+import { DateRangePicker } from '@datadog/druids/time/DateRangePicker';
 import { Text } from '@datadog/druids/typography/Text';
 import { useCallback, useMemo, useState } from 'react';
 
@@ -69,6 +72,29 @@ function sampleRateLevel(sampleRate: number): 'default' | 'warning' | 'danger' {
     if (sampleRate >= 75) return 'default';
     if (sampleRate >= 25) return 'warning';
     return 'danger';
+}
+
+function InfoHint({ text }: { text: string }) {
+    const [isOpen, setIsOpen] = useState(false);
+    return (
+        <span
+            style={{ position: 'relative', display: 'inline-flex', width: 'fit-content', justifySelf: 'start', cursor: 'help' }}
+            onMouseEnter={() => setIsOpen(true)}
+            onMouseLeave={() => setIsOpen(false)}
+            onClick={() => setIsOpen((open) => !open)}
+        >
+            <InfoIcon size="sm" title="" hasInlineCentering ariaLabel={text} />
+            {isOpen && (
+                <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: 4, width: 280, zIndex: 20 }}>
+                    <MessageBox>
+                        <Text as="p" size="sm">
+                            {text}
+                        </Text>
+                    </MessageBox>
+                </div>
+            )}
+        </span>
+    );
 }
 
 function QueryCode({ query }: { query: string }) {
@@ -141,12 +167,20 @@ const filterTableColumns = [
     // the runtime shape matches TableColumn<RetentionFilterSummary>.
 ] as unknown as TableColumn<RetentionFilterSummary>[];
 
+const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+
 function App() {
     const [selectedAppId, setSelectedAppId] = useState<string | undefined>();
+    const [timeFrame, setTimeFrame] = useState(() => {
+        const end = Date.now();
+        return { start: end - THIRTY_DAYS_MS, end, paused: true };
+    });
     const [industry, setIndustry] = useState<Industry>('generic');
     const [selectedScenarioIds, setSelectedScenarioIds] = useState<Set<string>>(new Set());
     const [editingScenarioIds, setEditingScenarioIds] = useState<Set<string>>(new Set());
-    const [scenarioOverrides, setScenarioOverrides] = useState<Record<string, { sampleRate: number; pctOfSessions: number }>>({});
+    const [scenarioOverrides, setScenarioOverrides] = useState<
+        Record<string, { sampleRate: number; pctOfSessions: number; isReplayEnabled: boolean }>
+    >({});
     const [pricing, setPricing] = useState<PricingConfig>(DEFAULT_PRICING);
     const [legacySampleRatePct, setLegacySampleRatePct] = useState(80);
 
@@ -154,9 +188,12 @@ function App() {
 
     const selectedApp = appsQuery.data?.find((app) => app.id === selectedAppId);
 
+    const rangeFromIso = new Date(timeFrame.start).toISOString();
+    const rangeToIso = new Date(timeFrame.end).toISOString();
+
     const usageQuery = useQuery({
-        queryKey: ['rum-usage', selectedAppId],
-        queryFn: () => getRumUsage(selectedAppId as string, 30),
+        queryKey: ['rum-usage', selectedAppId, rangeFromIso, rangeToIso],
+        queryFn: () => getRumUsage(selectedAppId as string, rangeFromIso, rangeToIso),
         enabled: Boolean(selectedAppId),
     });
 
@@ -179,6 +216,7 @@ function App() {
                     id: scenario.id,
                     sampleRate: scenarioOverrides[scenario.id]?.sampleRate ?? scenario.suggestedSampleRate,
                     pctOfSessions: scenarioOverrides[scenario.id]?.pctOfSessions ?? scenario.suggestedPctOfSessions,
+                    isReplayEnabled: scenarioOverrides[scenario.id]?.isReplayEnabled ?? scenario.defaultReplayEnabled,
                 })),
         [scenarios, selectedScenarioIds, scenarioOverrides],
     );
@@ -214,8 +252,24 @@ function App() {
                 const existing = current[scenarioId] ?? {
                     sampleRate: scenario?.suggestedSampleRate ?? 0,
                     pctOfSessions: scenario?.suggestedPctOfSessions ?? 0,
+                    isReplayEnabled: scenario?.defaultReplayEnabled ?? false,
                 };
                 return { ...current, [scenarioId]: { ...existing, [field]: value } };
+            });
+        },
+        [scenarios],
+    );
+
+    const toggleReplay = useCallback(
+        (scenarioId: string) => {
+            setScenarioOverrides((current) => {
+                const scenario = scenarios.find((candidate) => candidate.id === scenarioId);
+                const existing = current[scenarioId] ?? {
+                    sampleRate: scenario?.suggestedSampleRate ?? 0,
+                    pctOfSessions: scenario?.suggestedPctOfSessions ?? 0,
+                    isReplayEnabled: scenario?.defaultReplayEnabled ?? false,
+                };
+                return { ...current, [scenarioId]: { ...existing, isReplayEnabled: !existing.isReplayEnabled } };
             });
         },
         [scenarios],
@@ -253,6 +307,7 @@ function App() {
         isEditing: boolean;
         sampleRate: number;
         pctOfSessions: number;
+        isReplayEnabled: boolean;
         ingestedSessions: number;
     };
 
@@ -264,6 +319,7 @@ function App() {
                 isEditing: editingScenarioIds.has(scenario.id),
                 sampleRate: override?.sampleRate ?? scenario.suggestedSampleRate,
                 pctOfSessions: override?.pctOfSessions ?? scenario.suggestedPctOfSessions,
+                isReplayEnabled: override?.isReplayEnabled ?? scenario.defaultReplayEnabled,
                 ingestedSessions,
             };
         },
@@ -338,6 +394,18 @@ function App() {
                     },
                 },
                 {
+                    id: 'replay',
+                    Header: 'Replay',
+                    width: 80,
+                    Cell: ({ row }: { row: { original: RetentionScenario; extraData: ScenarioRowExtraData } }) => (
+                        <ToggleSwitch
+                            isChecked={row.extraData.isReplayEnabled}
+                            onChange={() => toggleReplay(row.original.id)}
+                            ariaLabel={`Include Session Replay for ${row.original.label}`}
+                        />
+                    ),
+                },
+                {
                     id: 'edit',
                     Header: '',
                     width: 80,
@@ -358,7 +426,7 @@ function App() {
                 // react-table's column generics can't express per-column value narrowing cleanly here;
                 // the runtime shape matches TableColumn<RetentionScenario>.
             ] as unknown as TableColumn<RetentionScenario>[],
-        [updateOverride, toggleEditingScenario],
+        [updateOverride, toggleReplay, toggleEditingScenario],
     );
 
     return (
@@ -369,25 +437,73 @@ function App() {
                         RUM Without Limits Budget Copilot
                     </Text>
                     <Text as="p" size="md" variant="secondary" marginBottom="md">
-                        Pick a RUM application, choose contextual retention filter scenarios, and see the
-                        projected Measure + Investigate cost update live against your legacy spend.
+                        Use this with a customer (or on your own) to plan their migration from legacy RUM to RUM
+                        Without Limits: see what they actually ingest and retain today, model which retention
+                        filters make sense for their app, and see the projected Measure + Investigate cost before
+                        anything changes in their org.
                     </Text>
+                    <MessageBox title="How to use this">
+                        <Text as="p" size="sm">
+                            1. Pick the RUM application and time window to model — everything below reflects that
+                            app's real usage over the selected range.
+                        </Text>
+                        <Text as="p" size="sm" marginTop="xs">
+                            2. Review what it's ingesting/retaining today, and which retention filters (if any)
+                            are already configured.
+                        </Text>
+                        <Text as="p" size="sm" marginTop="xs">
+                            3. Check the retention filter templates relevant to this customer's business, tune
+                            their sample rate and estimated match rate, and decide whether each should also retain
+                            Session Replay.
+                        </Text>
+                        <Text as="p" size="sm" marginTop="xs">
+                            4. Compare the resulting Measure + Investigate cost against their current legacy
+                            spend, and see the retention rate they can afford if the goal is to stay within that
+                            budget.
+                        </Text>
+                    </MessageBox>
                 </GridItem>
 
                 <GridItem>
-                    <Text as="h2" size="lg" weight="bold" marginBottom="sm">
-                        1. Choose a RUM application
-                    </Text>
-                    <Select
-                        placeholder={appsQuery.isLoading ? 'Loading applications…' : 'Select a RUM application'}
-                        isLoading={appsQuery.isLoading}
-                        options={(appsQuery.data ?? []).map((app) => ({ label: `${app.name} (${app.type})`, value: app.id }))}
-                        value={selectedAppId ? { label: selectedApp?.name ?? '', value: selectedAppId } : undefined}
-                        onChange={(option) => setSelectedAppId((option as { value: string } | null)?.value)}
-                    />
+                    <Grid columns="2fr 1fr" gap="md" alignItems="start">
+                        <div>
+                            <Text as="h2" size="lg" weight="bold" marginBottom="sm">
+                                1. Choose a RUM application
+                            </Text>
+                            <Text as="p" size="sm" variant="secondary" marginBottom="md">
+                                Every step below is scoped to this application and date range.
+                            </Text>
+                            <Select
+                                placeholder={appsQuery.isLoading ? 'Loading applications…' : 'Select a RUM application'}
+                                isLoading={appsQuery.isLoading}
+                                options={(appsQuery.data ?? []).map((app) => ({ label: `${app.name} (${app.type})`, value: app.id }))}
+                                value={selectedAppId ? { label: selectedApp?.name ?? '', value: selectedAppId } : undefined}
+                                onChange={(option) => setSelectedAppId((option as { value: string } | null)?.value)}
+                            />
+                        </div>
+                        <div>
+                            <Text as="h2" size="lg" weight="bold" marginBottom="sm">
+                                Date range
+                            </Text>
+                            <DateRangePicker
+                                timeFrame={timeFrame}
+                                setTimeFrame={(nextTimeFrame) =>
+                                    setTimeFrame({ start: nextTimeFrame.start, end: nextTimeFrame.end, paused: true })
+                                }
+                                hasCalendar
+                                dateTimeFormat="date-only"
+                            />
+                        </div>
+                    </Grid>
                     {appsQuery.isError && (
                         <MessageBox level="danger" title="Unable to load RUM applications" marginTop="sm">
                             Check that this app has permission to read RUM application data.
+                        </MessageBox>
+                    )}
+                    {!selectedAppId && !appsQuery.isLoading && !appsQuery.isError && (
+                        <MessageBox marginTop="sm">
+                            Select a RUM application above to see its usage, existing retention filters, and the
+                            budget model.
                         </MessageBox>
                     )}
                 </GridItem>
@@ -395,10 +511,17 @@ function App() {
                 {selectedAppId && (
                     <>
                         <GridItem>
-                            <Text as="h2" size="lg" weight="bold" marginBottom="sm">
-                                2. Current usage (last 30 days)
+                            <Grid columns="auto 1fr" gap="xs" alignItems="center" marginBottom="sm">
+                                <Text as="h2" size="lg" weight="bold">
+                                    2. Current usage
+                                </Text>
+                                <InfoHint text="Ingested, indexed, and replay counts come from the datadog.estimated_usage.rum.* metrics, scoped to this application and the date range above." />
+                            </Grid>
+                            <Text as="p" size="sm" variant="secondary" marginBottom="md">
+                                This is what the app actually did during the selected window — nothing here
+                                changes until you create or edit retention filters in RUM Settings.
                             </Text>
-                            <Grid columns={3} gap="md">
+                            <Grid columns={4} gap="md">
                                 <CalloutValue
                                     label="Ingested sessions (Measure)"
                                     value={usageQuery.isLoading ? '…' : formatSessions(ingestedSessions)}
@@ -408,6 +531,12 @@ function App() {
                                     label="Indexed sessions (Investigate)"
                                     value={usageQuery.isLoading ? '…' : formatSessions(usageQuery.data?.indexedSessions ?? 0)}
                                     isLoading={usageQuery.isLoading}
+                                />
+                                <CalloutValue
+                                    label="Replay sessions"
+                                    value={usageQuery.isLoading ? '…' : formatSessions(usageQuery.data?.replaySessions ?? 0)}
+                                    isLoading={usageQuery.isLoading}
+                                    icon={SessionReplayIcon}
                                 />
                                 <CalloutValue
                                     label="Current retention rate"
@@ -421,8 +550,14 @@ function App() {
                             </Grid>
 
                             <Spacing as="div" marginTop="md">
-                                <Text as="h3" size="md" weight="bold" marginBottom="sm">
+                                <Text as="h3" size="md" weight="bold" marginBottom="xs">
                                     Existing retention filters
+                                </Text>
+                                <Text as="p" size="sm" variant="secondary" marginBottom="md">
+                                    Filters already configured on this application today, shown read-only for
+                                    reference. They are <strong>not</strong> included in the budget model below —
+                                    that model is driven only by what you check in step 3, so you can compare a
+                                    proposed scenario against what's live today.
                                 </Text>
                                 <Table
                                     data={filtersQuery.data ?? []}
@@ -439,6 +574,15 @@ function App() {
                             <HorizontalSeparator marginBottom="md" />
                             <Text as="h2" size="lg" weight="bold" marginBottom="sm">
                                 3. Build a retention filter scenario
+                            </Text>
+                            <Text as="p" size="sm" variant="secondary" marginBottom="md">
+                                Pick an industry to narrow the list to common patterns for that vertical, then
+                                check the filters worth discussing with this customer. For each checked filter,
+                                click <strong>Edit</strong> to tune its Sample % (the retention filter's own
+                                sample rate) and Match % (your estimate of what share of sessions the query
+                                matches) — the defaults are rough starting points, not real numbers for this app.
+                                Toggle <strong>Replay</strong> if that filter should also retain Session Replay
+                                recordings.
                             </Text>
                             <Select
                                 floatingLabel="Industry"
@@ -465,8 +609,16 @@ function App() {
 
                         <GridItem>
                             <HorizontalSeparator marginBottom="md" />
-                            <Text as="h2" size="lg" weight="bold" marginBottom="sm">
-                                4. Budget model
+                            <Grid columns="auto 1fr" gap="xs" alignItems="center" marginBottom="sm">
+                                <Text as="h2" size="lg" weight="bold">
+                                    4. Budget model
+                                </Text>
+                                <InfoHint text="Measure is billed on every ingested session from step 2 above. Investigate (and Replay) are billed on the estimated retained sessions shown below, computed from the included filters' Sample % and Match % in step 3." />
+                            </Grid>
+                            <Text as="p" size="sm" variant="secondary" marginBottom="md">
+                                Enter this customer's actual (or list) pricing below, then compare their current
+                                legacy cost against the scenario built in step 3 — and see the retention rate
+                                they could afford if the goal is to match their current budget.
                             </Text>
                             <Grid columns={4} gap="sm" marginBottom="md">
                                 <InputNumber
@@ -491,6 +643,30 @@ function App() {
                                 />
                             </Grid>
 
+                            <Grid columns="auto 1fr" gap="xs" alignItems="center" marginTop="md">
+                                <Text as="h3" size="md" weight="bold">
+                                    Session counts used in this calculation
+                                </Text>
+                                <InfoHint text="These are the exact inputs feeding the cost numbers below: Measure cost = ingested sessions × Measure $/1k. Investigate cost = retained sessions × Investigate $/1k. Replay cost = replay-retained sessions × Replay $/1k." />
+                            </Grid>
+                            <Grid columns={3} gap="md" marginBottom="md">
+                                <CalloutValue
+                                    size="sm"
+                                    label="Ingested sessions (from step 2)"
+                                    value={formatSessions(ingestedSessions)}
+                                />
+                                <CalloutValue
+                                    size="sm"
+                                    label="Retained sessions (est., from step 3)"
+                                    value={formatSessions(retention.retainedSessions)}
+                                />
+                                <CalloutValue
+                                    size="sm"
+                                    label="Replay-retained sessions (est.)"
+                                    value={formatSessions(retention.replayRetainedSessions)}
+                                />
+                            </Grid>
+
                             <Grid columns={3} gap="md">
                                 <CalloutValue label="Current legacy cost" value={formatMoney(cost.legacyCost)} />
                                 <CalloutValue
@@ -501,17 +677,31 @@ function App() {
                                 <CalloutValue label="Estimated retention rate" value={`${retention.retentionRatePct.toFixed(1)}%`} />
                             </Grid>
 
+                            <Grid columns={3} gap="md" marginTop="md">
+                                <CalloutValue size="sm" label="Measure cost" value={formatMoney(cost.measureCost)} />
+                                <CalloutValue size="sm" label="Investigate cost" value={formatMoney(cost.investigateCost)} />
+                                <CalloutValue size="sm" label="Replay cost" value={formatMoney(cost.replayCost)} />
+                            </Grid>
+
                             <Spacing as="div" marginTop="md">
-                                <Text as="p" size="sm">
-                                    Measure: {formatMoney(cost.measureCost)} · Investigate: {formatMoney(cost.investigateCost)} · Replay:{' '}
-                                    {formatMoney(cost.replayCost)}
-                                </Text>
-                                <Text as="p" size="sm" marginTop="xs">
-                                    If the goal is to match the current legacy budget of {formatMoney(cost.legacyCost)} while
-                                    sampling 100% of sessions into Measure, the affordable retention rate is roughly{' '}
-                                    <strong>{reverseBudget.affordableRetentionRatePct.toFixed(1)}%</strong> (~
-                                    {formatSessions(reverseBudget.affordableRetainedSessions)} sessions/month retained).
-                                </Text>
+                                <Grid columns="auto 1fr" gap="xs" alignItems="center" marginBottom="sm">
+                                    <Text as="h3" size="md" weight="bold">
+                                        Budget-matched retention
+                                    </Text>
+                                    <InfoHint text="Reverse-solved: if you want to stay within the current legacy budget while sampling 100% of sessions into Measure, this is the retention rate/session volume Investigate can afford with the budget left over after Measure." />
+                                </Grid>
+                                <Grid columns={2} gap="md">
+                                    <CalloutValue
+                                        label={`Affordable retention rate to match ${formatMoney(cost.legacyCost)}/mo`}
+                                        value={`${reverseBudget.affordableRetentionRatePct.toFixed(1)}%`}
+                                        level="success"
+                                    />
+                                    <CalloutValue
+                                        label="Affordable retained sessions/mo"
+                                        value={formatSessions(reverseBudget.affordableRetainedSessions)}
+                                        level="success"
+                                    />
+                                </Grid>
                             </Spacing>
 
                             <MessageBox marginTop="md" title="This is a planning estimate">
