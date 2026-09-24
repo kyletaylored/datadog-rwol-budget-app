@@ -1,5 +1,6 @@
 {
   "name": "datadog-rum-without-limits-migrator",
+  "description": "Datadog App that models retention filter scenarios and RUM Without Limits budget impact for a RUM application, using live usage data.",
   "version": "0.0.1",
   "private": true,
   "engines": {
