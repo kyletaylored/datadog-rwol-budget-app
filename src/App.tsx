@@ -465,7 +465,7 @@ function App() {
                 </GridItem>
 
                 <GridItem>
-                    <Grid columns="2fr 1fr" gap="md" alignItems="start">
+                    <Grid columns="2fr 1fr" gap="md" alignItems="start" isFullWidth>
                         <div>
                             <Text as="h2" size="lg" weight="bold" marginBottom="sm">
                                 1. Choose a RUM application
@@ -492,6 +492,7 @@ function App() {
                                 }
                                 hasCalendar
                                 dateTimeFormat="date-only"
+                                width={260}
                             />
                         </div>
                     </Grid>
@@ -511,7 +512,7 @@ function App() {
                 {selectedAppId && (
                     <>
                         <GridItem>
-                            <Grid columns="auto 1fr" gap="xs" alignItems="center" marginBottom="sm">
+                            <Grid columns="auto 1fr" gap="xs" alignItems="center" marginBottom="sm" isFullWidth>
                                 <Text as="h2" size="lg" weight="bold">
                                     2. Current usage
                                 </Text>
@@ -521,7 +522,7 @@ function App() {
                                 This is what the app actually did during the selected window — nothing here
                                 changes until you create or edit retention filters in RUM Settings.
                             </Text>
-                            <Grid columns={4} gap="md">
+                            <Grid columns={4} gap="md" isFullWidth>
                                 <CalloutValue
                                     label="Ingested sessions (Measure)"
                                     value={usageQuery.isLoading ? '…' : formatSessions(ingestedSessions)}
@@ -609,7 +610,7 @@ function App() {
 
                         <GridItem>
                             <HorizontalSeparator marginBottom="md" />
-                            <Grid columns="auto 1fr" gap="xs" alignItems="center" marginBottom="sm">
+                            <Grid columns="auto 1fr" gap="xs" alignItems="center" marginBottom="sm" isFullWidth>
                                 <Text as="h2" size="lg" weight="bold">
                                     4. Budget model
                                 </Text>
@@ -620,7 +621,7 @@ function App() {
                                 legacy cost against the scenario built in step 3 — and see the retention rate
                                 they could afford if the goal is to match their current budget.
                             </Text>
-                            <Grid columns={4} gap="sm" marginBottom="md">
+                            <Grid columns={4} gap="sm" marginBottom="md" isFullWidth>
                                 <InputNumber
                                     floatingLabel="Legacy $ / 1k sessions"
                                     value={pricing.legacyPerThousand}
@@ -643,13 +644,13 @@ function App() {
                                 />
                             </Grid>
 
-                            <Grid columns="auto 1fr" gap="xs" alignItems="center" marginTop="md">
+                            <Grid columns="auto 1fr" gap="xs" alignItems="center" marginTop="md" isFullWidth>
                                 <Text as="h3" size="md" weight="bold">
                                     Session counts used in this calculation
                                 </Text>
                                 <InfoHint text="These are the exact inputs feeding the cost numbers below: Measure cost = ingested sessions × Measure $/1k. Investigate cost = retained sessions × Investigate $/1k. Replay cost = replay-retained sessions × Replay $/1k." />
                             </Grid>
-                            <Grid columns={3} gap="md" marginBottom="md">
+                            <Grid columns={3} gap="md" marginBottom="md" isFullWidth>
                                 <CalloutValue
                                     size="sm"
                                     label="Ingested sessions (from step 2)"
@@ -667,7 +668,7 @@ function App() {
                                 />
                             </Grid>
 
-                            <Grid columns={3} gap="md">
+                            <Grid columns={3} gap="md" isFullWidth>
                                 <CalloutValue label="Current legacy cost" value={formatMoney(cost.legacyCost)} />
                                 <CalloutValue
                                     label="Projected RWoL cost (this scenario)"
@@ -677,20 +678,20 @@ function App() {
                                 <CalloutValue label="Estimated retention rate" value={`${retention.retentionRatePct.toFixed(1)}%`} />
                             </Grid>
 
-                            <Grid columns={3} gap="md" marginTop="md">
+                            <Grid columns={3} gap="md" marginTop="md" isFullWidth>
                                 <CalloutValue size="sm" label="Measure cost" value={formatMoney(cost.measureCost)} />
                                 <CalloutValue size="sm" label="Investigate cost" value={formatMoney(cost.investigateCost)} />
                                 <CalloutValue size="sm" label="Replay cost" value={formatMoney(cost.replayCost)} />
                             </Grid>
 
                             <Spacing as="div" marginTop="md">
-                                <Grid columns="auto 1fr" gap="xs" alignItems="center" marginBottom="sm">
+                                <Grid columns="auto 1fr" gap="xs" alignItems="center" marginBottom="sm" isFullWidth>
                                     <Text as="h3" size="md" weight="bold">
                                         Budget-matched retention
                                     </Text>
                                     <InfoHint text="Reverse-solved: if you want to stay within the current legacy budget while sampling 100% of sessions into Measure, this is the retention rate/session volume Investigate can afford with the budget left over after Measure." />
                                 </Grid>
-                                <Grid columns={2} gap="md">
+                                <Grid columns={2} gap="md" isFullWidth>
                                     <CalloutValue
                                         label={`Affordable retention rate to match ${formatMoney(cost.legacyCost)}/mo`}
                                         value={`${reverseBudget.affordableRetentionRatePct.toFixed(1)}%`}
