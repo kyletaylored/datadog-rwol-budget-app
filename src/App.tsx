@@ -133,6 +133,17 @@ function InfoHint({ text }: { text: string }) {
     );
 }
 
+// Table with selectableRows toggles a row's selection on any click inside it, so
+// interactive controls in a cell must swallow the click or they'd deselect their
+// own row (which also drops it out of edit mode).
+function stopRowClick(event: React.MouseEvent) {
+    event.stopPropagation();
+}
+
+function CellControl({ children }: { children: React.ReactNode }) {
+    return <span onClick={stopRowClick}>{children}</span>;
+}
+
 function QueryCode({ query }: { query: string }) {
     return (
         <Text as="code" size="sm" isMonospace variant="secondary" hasEllipsis title={query}>
@@ -397,11 +408,13 @@ function App() {
                         const { isEditing, sampleRate } = row.extraData;
                         if (!isEditing) return <Text size="sm">{sampleRate}%</Text>;
                         return (
-                            <InputNumber
-                                size="sm"
-                                value={sampleRate}
-                                onChange={(event) => updateOverride(row.original.id, 'sampleRate', Number(event.target.value))}
-                            />
+                            <CellControl>
+                                <InputNumber
+                                    size="sm"
+                                    value={sampleRate}
+                                    onChange={(event) => updateOverride(row.original.id, 'sampleRate', Number(event.target.value))}
+                                />
+                            </CellControl>
                         );
                     },
                 },
@@ -413,11 +426,13 @@ function App() {
                         const { isEditing, pctOfSessions } = row.extraData;
                         if (!isEditing) return <Text size="sm">{pctOfSessions}%</Text>;
                         return (
-                            <InputNumber
-                                size="sm"
-                                value={pctOfSessions}
-                                onChange={(event) => updateOverride(row.original.id, 'pctOfSessions', Number(event.target.value))}
-                            />
+                            <CellControl>
+                                <InputNumber
+                                    size="sm"
+                                    value={pctOfSessions}
+                                    onChange={(event) => updateOverride(row.original.id, 'pctOfSessions', Number(event.target.value))}
+                                />
+                            </CellControl>
                         );
                     },
                 },
@@ -436,11 +451,13 @@ function App() {
                     Header: 'Replay',
                     width: 80,
                     Cell: ({ row }: { row: { original: RetentionScenario; extraData: ScenarioRowExtraData } }) => (
-                        <ToggleSwitch
-                            isChecked={row.extraData.isReplayEnabled}
-                            onChange={() => toggleReplay(row.original.id)}
-                            ariaLabel={`Include Session Replay for ${row.original.label}`}
-                        />
+                        <CellControl>
+                            <ToggleSwitch
+                                isChecked={row.extraData.isReplayEnabled}
+                                onChange={() => toggleReplay(row.original.id)}
+                                ariaLabel={`Include Session Replay for ${row.original.label}`}
+                            />
+                        </CellControl>
                     ),
                 },
                 {
@@ -450,14 +467,16 @@ function App() {
                     Cell: ({ row }: { row: { original: RetentionScenario; extraData: ScenarioRowExtraData } }) => {
                         const isEditing = row.extraData.isEditing;
                         return (
-                            <Button
-                                size="sm"
-                                isBorderless
-                                isSoft={isEditing}
-                                icon={isEditing ? CheckIcon : PencilIcon}
-                                label={isEditing ? 'Save' : 'Edit'}
-                                onClick={() => toggleEditingScenario(row.original.id)}
-                            />
+                            <CellControl>
+                                <Button
+                                    size="sm"
+                                    isBorderless
+                                    isSoft={isEditing}
+                                    icon={isEditing ? CheckIcon : PencilIcon}
+                                    label={isEditing ? 'Save' : 'Edit'}
+                                    onClick={() => toggleEditingScenario(row.original.id)}
+                                />
+                            </CellControl>
                         );
                     },
                 },
